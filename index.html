@@ -291,7 +291,7 @@
     standard: [
       "bcdfghjklmnprstvwyz".split(""),
       VOWELS.slice(),
-      "bdgmnptx".split("")
+      CONS.filter(function (l) { return l !== "x" && l !== "q"; })
     ],
     bak1: [
       "bmsrtngphlcfd".split(""),
