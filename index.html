@@ -655,26 +655,33 @@
   var chosen = "", chosenKind = "", gameMode = "";   // chosenKind: "" for a group, "p" for one student
   function listOf(kind) { return kind === "p" ? scores.people : scores.groups; }
   function sameReader(x, name, kind) { return x.g === name && (x.k || "") === kind; }
+  function bestScore(name, kind) {
+    var b = null;
+    scores.games.forEach(function (x) { if (sameReader(x, name, kind) && (b === null || x.s > b)) b = x.s; });
+    return b;
+  }
   function startView() {
     if (!chosen && listOf(scores.lastKind || "").indexOf(scores.last) >= 0) { chosen = scores.last; chosenKind = scores.lastKind || ""; }
     if (!gameMode) gameMode = scores.mode === "hide" ? "hide" : "open";
     gameSheet.innerHTML =
       '<div class="sheet-top"><h2>Play 10 flips</h2><button class="small" data-act="close">Cancel</button></div>' +
-      "<p>The group reads 10 words. After each word, press Read it or Not yet. Then a new word comes up.</p>" +
+      "<p>The student reads 10 words. After each word, press Read it or Not yet. Then a new word comes up.</p>" +
       "<h3 style=\"margin:14px 0 0;font-size:1rem\">Which game?</h3>" +
       '<div class="pick"><button class="small" data-mode="open" aria-pressed="' + (gameMode === "open") + '">All cards showing</button>' +
       '<button class="small" data-mode="hide" aria-pressed="' + (gameMode === "hide") + '">Last card hidden</button></div>' +
       (gameMode === "hide" ? "<p>The last card starts face down for every word. Tap it to flip it over.</p>" : "") +
       "<h3 style=\"margin:14px 0 0;font-size:1rem\">Who is reading?</h3>" +
+      (scores.groups.length + scores.people.length ? '<div style="margin-top:4px"><button class="link" style="color:#2f4f9e;padding:4px 0" data-act="editnames">' + (editNames ? "Done removing names" : "Remove names") + "</button></div>" : "") +
       [["", "Groups"], ["p", "Students"]].map(function (kd) {
         var list = listOf(kd[0]); if (!list.length) return "";
         return '<p style="margin:10px 0 0">' + kd[1] + '</p><div class="pick" style="margin-top:4px">' + list.map(function (g) {
-          return '<button class="small" data-group="' + esc(g) + '" data-kind="' + kd[0] + '" aria-pressed="' + (g === chosen && kd[0] === chosenKind) + '">' + esc(g) + "</button>";
+          if (editNames) { var dk = kd[0] + "|" + g; return '<button class="small" style="color:#b3261e;border-color:#b3261e" data-del="' + esc(dk) + '">' + (sureDel === dk ? "Tap again to delete " + esc(g) : esc(g) + " &#10005;") + "</button>"; }
+          return '<button class="small" data-group="' + esc(g) + '" data-kind="' + kd[0] + '" aria-pressed="' + (g === chosen && kd[0] === chosenKind) + '">' + esc(g) + (g === chosen && kd[0] === chosenKind && bestScore(g, kd[0]) !== null ? " &middot; high score " + bestScore(g, kd[0]) : "") + "</button>";
         }).join("") + "</div>";
       }).join("") +
-      (scores.groups.length + scores.people.length ? "" : "<p>Nobody yet. Add a group or a student below.</p>") +
-      '<div class="addrow"><input id="newGroup" type="text" maxlength="30" placeholder="Name" autocomplete="off" aria-label="Name of a group or student">' +
-      '<button class="small" data-act="add">Add as group</button><button class="small" data-act="addp">Add as student</button></div>' +
+      (scores.groups.length + scores.people.length ? "" : "<p>Nobody yet. Add a student below.</p>") +
+      '<div class="addrow"><input id="newGroup" type="text" maxlength="30" placeholder="Student name" autocomplete="off" aria-label="Student name">' +
+      '<button class="small" data-act="addp">Add student</button></div>' +
       '<div class="foot"><button class="btn primary" data-act="start"' + (chosen ? "" : " disabled") + ">Start</button></div>";
   }
   function addGroup(kind) {
@@ -752,7 +759,15 @@
   }
 
   // --- scores by day ---
-  var showGroup = "", showKind = "", sure = 0;
+  var editNames = false, sureDel = "";
+  function deleteReader(nm, kd) {
+    scores.games = scores.games.filter(function (x) { return !sameReader(x, nm, kd); });
+    var lst = listOf(kd), ix = lst.indexOf(nm); if (ix >= 0) lst.splice(ix, 1);
+    if (scores.last === nm && (scores.lastKind || "") === kd) { scores.last = ""; scores.lastKind = ""; }
+    if (chosen === nm && chosenKind === kd) { chosen = ""; chosenKind = ""; }
+    saveScores();
+  }
+  var showGroup = "", showKind = "", sure = 0, sureName = "";
   function scoresView() {
     var lists = { "": scores.groups.slice(), p: scores.people.slice() };
     scores.games.forEach(function (x) { var l = lists[x.k || ""]; if (l.indexOf(x.g) < 0) l.push(x.g); });
@@ -778,6 +793,7 @@
           return '<div class="game"><span><b>' + x.s + "</b> out of " + FLIPS + (x.m === "hide" ? " · last card hidden" : "") + '</span><button class="small" data-remove="' + x.t + '">' + (sure === x.t ? "Tap again to remove" : "Remove") + "</button></div>";
         }).join("") + "</div>";
       }).join("") +
+      (any && showGroup ? '<div style="margin-top:16px;text-align:center"><button class="small" style="color:#b3261e;border-color:#b3261e" data-delname="1">' + (sureName === showKind + "|" + showGroup ? "Tap again to delete " + esc(showGroup) + " and all scores" : "Delete " + esc(showGroup) + (showKind === "p" ? " (student)" : " (group)")) + "</button></div>" : "") +
       (any ? whereSaved() : "");
   }
 
@@ -786,13 +802,26 @@
     if (t === gameScrim) { if (!game) closeSheet(); return; }
     if (t.dataset.group) { chosen = t.dataset.group; chosenKind = t.dataset.kind || ""; startView(); }
     else if (t.dataset.mode) { gameMode = t.dataset.mode; startView(); }
-    else if (t.dataset.show) { showGroup = t.dataset.show; showKind = t.dataset.kind || ""; sure = 0; scoresView(); }
+    else if (t.dataset.show) { showGroup = t.dataset.show; showKind = t.dataset.kind || ""; sure = 0; sureName = ""; scoresView(); }
+    else if (t.dataset.delname) {
+      var key = showKind + "|" + showGroup;
+      if (sureName !== key) { sureName = key; scoresView(); return; }
+      deleteReader(showGroup, showKind);
+      showGroup = ""; showKind = ""; sure = 0; sureName = "";
+      scoresView();
+    }
     else if (t.dataset.remove) {
       var id = +t.dataset.remove;
       if (sure !== id) { sure = id; scoresView(); return; }
       scores.games = scores.games.filter(function (x) { return x.t !== id; }); sure = 0; saveScores(); scoresView();
     }
-    else if (t.dataset.act === "close") closeSheet();
+    else if (t.dataset.del) {
+      var dv = t.dataset.del, bar = dv.indexOf("|");
+      if (sureDel !== dv) { sureDel = dv; startView(); return; }
+      deleteReader(dv.slice(bar + 1), dv.slice(0, bar)); sureDel = ""; startView();
+    }
+    else if (t.dataset.act === "editnames") { editNames = !editNames; sureDel = ""; startView(); }
+    else if (t.dataset.act === "close") { editNames = false; sureDel = ""; closeSheet(); }
     else if (t.dataset.act === "add") addGroup("");
     else if (t.dataset.act === "addp") addGroup("p");
     else if (t.dataset.act === "start") startGame();
@@ -800,7 +829,7 @@
     else if (t.dataset.act === "scores") { sure = 0; openSheet(scoresView); }
   });
   gameScrim.addEventListener("keydown", function (e) {
-    if (e.key === "Enter" && e.target.id === "newGroup") { e.preventDefault(); addGroup(""); }
+    if (e.key === "Enter" && e.target.id === "newGroup") { e.preventDefault(); addGroup("p"); }
     else if (e.key === "Escape" && (sheetView === startView || sheetView === scoresView)) closeSheet();
   });
   // Sharing code. Only shown when this copy of the app has a public address to share.
@@ -819,7 +848,7 @@
     });
   }
   if (!Object.keys(PICS).length) document.body.classList.add("nopics");
-  document.getElementById("playBtn").addEventListener("click", function () { openSheet(startView); });
+  document.getElementById("playBtn").addEventListener("click", function () { editNames = false; sureDel = ""; openSheet(startView); });
   document.getElementById("scoresBtn").addEventListener("click", function () { sure = 0; openSheet(scoresView); });
   document.getElementById("markYes").addEventListener("click", function () { mark(true); });
   document.getElementById("markNo").addEventListener("click", function () { mark(false); });
