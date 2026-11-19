@@ -655,6 +655,10 @@
   var chosen = "", chosenKind = "", gameMode = "";   // chosenKind: "" for a group, "p" for one student
   function listOf(kind) { return kind === "p" ? scores.people : scores.groups; }
   function sameReader(x, name, kind) { return x.g === name && (x.k || "") === kind; }
+  // The high score sits inside a small gold star next to the name.
+  function starBadge(n) {
+    return ' <svg class="hs-star" viewBox="0 0 24 24" role="img" aria-label="High score ' + n + '" style="width:30px;height:30px;vertical-align:middle;margin:-6px -4px -6px 4px"><path d="M12 1.5l3.1 6.6 7.2.9-5.3 5 1.4 7.1L12 17.5 5.6 21.1 7 14l-5.3-5 7.2-.9z" fill="#ffd23f" stroke="#c79a12" stroke-width="1" stroke-linejoin="round"/><text x="12" y="15.2" text-anchor="middle" font-size="' + (n >= 10 ? 8 : 9.5) + '" font-weight="800" font-family="system-ui,sans-serif" fill="#1f2a44">' + n + "</text></svg>";
+  }
   function bestScore(name, kind) {
     var b = null;
     scores.games.forEach(function (x) { if (sameReader(x, name, kind) && (b === null || x.s > b)) b = x.s; });
@@ -676,7 +680,7 @@
         var list = listOf(kd[0]); if (!list.length) return "";
         return '<p style="margin:10px 0 0">' + kd[1] + '</p><div class="pick" style="margin-top:4px">' + list.map(function (g) {
           if (editNames) { var dk = kd[0] + "|" + g; return '<button class="small" style="color:#b3261e;border-color:#b3261e" data-del="' + esc(dk) + '">' + (sureDel === dk ? "Tap again to delete " + esc(g) : esc(g) + " &#10005;") + "</button>"; }
-          return '<button class="small" data-group="' + esc(g) + '" data-kind="' + kd[0] + '" aria-pressed="' + (g === chosen && kd[0] === chosenKind) + '">' + esc(g) + (g === chosen && kd[0] === chosenKind && bestScore(g, kd[0]) !== null ? " &middot; high score " + bestScore(g, kd[0]) : "") + "</button>";
+          return '<button class="small" data-group="' + esc(g) + '" data-kind="' + kd[0] + '" aria-pressed="' + (g === chosen && kd[0] === chosenKind) + '">' + esc(g) + (bestScore(g, kd[0]) !== null ? starBadge(bestScore(g, kd[0])) : "") + "</button>";
         }).join("") + "</div>";
       }).join("") +
       (scores.groups.length + scores.people.length ? "" : "<p>Nobody yet. Add a student below.</p>") +
