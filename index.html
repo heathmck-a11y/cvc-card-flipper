@@ -171,6 +171,12 @@
   .link { background: none; border: none; color: #cfd8ff; text-decoration: underline; font-size: .95rem; padding: 10px; font-family: system-ui, sans-serif; }
   .sheet .big { font-family: Andika, sans-serif; font-size: 3.2rem; font-weight: 700; text-align: center; margin: 10px 0 0; color: var(--ink); }
   .sheet .center { text-align: center; }
+  .opt { display: inline-flex; align-items: center; gap: 9px; background: none; border: 0; padding: 6px 16px 6px 2px; min-height: 42px; font: inherit; font-size: 1rem; color: var(--ink); cursor: pointer; text-align: left; }
+  .opt::before { content: ""; flex: none; width: 22px; height: 22px; border-radius: 50%; border: 2px solid #8a93a8; background: #fff; }
+  .opt[aria-pressed="true"] { font-weight: 700; }
+  .opt[aria-pressed="true"]::before { border-color: var(--chip-on); background: radial-gradient(circle, var(--chip-on) 0 44%, #fff 48%); }
+  .opt:focus-visible { outline: 3px solid #9db4f0; outline-offset: 2px; border-radius: 8px; }
+  .pick.col { flex-direction: column; align-items: flex-start; gap: 0; }
   .pick { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
   .pick .small[aria-pressed="true"] { background: #2f4f9e; border-color: #2f4f9e; color: #fff; }
   .addrow { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 16px; }
@@ -247,6 +253,11 @@
       <h2 id="setTitle">Choose letters</h2>
       <button class="btn primary" id="closeSet">Done</button>
     </div>
+    <div class="sec" id="whoSec">
+      <div class="sec-head"><h3>Sounds for</h3></div>
+      <div class="pick" id="whoSounds"></div>
+      <p id="whoNote" style="margin:0 0 6px;font-size:.85rem"></p>
+    </div>
     <p>Tap letters to turn them on or off for each card. Each card needs at least one letter.</p>
     <div class="quick">
       <button class="small" data-preset="standard">Standard CVC</button>
@@ -276,7 +287,11 @@
     </div>
 
     <label class="check"><input type="checkbox" id="hideLast"> Practice with the last card face down (tap anywhere on the screen to flip it over)</label>
-    <label class="check"><input type="checkbox" id="nonsense"> Nonsense words only (skip real words)</label>
+    <div class="sec">
+      <div class="sec-head"><h3>Kind of words</h3></div>
+      <div class="pick col" id="wordType"></div>
+      <p id="wordNote" style="margin:0;font-size:.85rem"></p>
+    </div>
     <label class="check"><input type="checkbox" id="softc"> Skip c or g before e or i (ce, ci, ge, gi)</label>
     <label class="check"><input type="checkbox" id="showArrow"> Show blending arrow under the cards</label>
   </div>
@@ -315,6 +330,14 @@
   var REAL = {};
   "bad bag bah bam ban bar bat bay bed beg ben bet bev bib bid big bin bit biz bob bod bog bop bot bow box boy bub bud bug bum bun bus but buy cab cad cam can cap car cat caw cig cob cod cog con cop cot cow coy cub cud cup cur cut cuz dab dad dam dan day deb ded def den dev dew did dig dim din dip dis doc dog doh don dot dub dud dug duh duz fab fad fan far fat fax fed fem fen few fez fib fig fin fir fit fix fob fog fop for fox fun fur gab gag gal gap gas gay gel gem get gif gig gin gob god got gum gun gus gut guy had hag hah hal ham has hat haw hay hed hem hen her hew hex hey hid him hip his hit hob hog hop hot how hub hug huh hum hut jab jag jam jan jar jaw jay jed jet jib jig jim job jog jon jot joy jug jut kab kan kap kat keg ken key kid kim kin kit kob kod kop kot kub kum kup kut lab lad lag lap law lax lay led leg len les let lid lin lip lit liz lob log lop lot low lox lug luv mac mad mag man map mar mat maw max may med meg meh mel men met mew mic mid mix mob mod mom mop mow mud mug mum nab nag nah nan nap nat nay ned net new nib nil nip nit nix nod nok nor not now nub nun nut pad pal pam pan pap par pat paw pax pay pec peg pen pep per pet pew pic pig pin pip pit pix pod pop pot pow pox pub pug pun pup pus put rad rag rah ram ran rap rat raw ray rec red ref rem rep rev rex rib rid rig rim rip rob rod ron rot row rub ruf rug rum run rut sac sad sag sal sam sap sat saw sax say sec sed set sew sex sez sib sic sid sim sin sip sir sis sit six sob sod sol son sop sow soy sub sum sun sup tab tad tag tan tap tar tat tax ted ten tex tic til tim tin tip tit tom ton top tot tow toy tub tuf tug tum tux vac val van var vat veg vet vex vid vim viv vow wad wag wan war was wax way web wed wes wet wig win wit wiz wok won wow wun wuz yak yam yap yaw yay yen yep yes yet yew yin yip yon yuk yum yup zag zap zed zen zig zip zit".split(" ").forEach(function (w) { REAL[w] = true; });
 
+  // Real words for "Real words only": REAL minus names, abbreviations, sound-alikes and words that are not plain short-vowel (was, her, boy, saw).
+  var NOTWORDS = ("bah bam ben bev biz bod bop bub cig con cuz dan deb ded def dev dis doc doh don duh duz fab fem fen fop gif gob gus hah hal hed huh jan jed jib jim jon kab kan kap kat kim kob kod kop kot kub kum kup kut ken len les liz luv lin lop lox mac mag mel meg meh mic max mod nab nan nat ned nil nix nok nit nub pam pap pax pec pic pix pox pus rad rah rec rem rep rev ron ruf sac sal sam sec sed sez sib sic sid sim sis sol sop sup tad tat ted tex tic til tim tom tuf tum vac val var viv vim vid veg vex wan wes wiz wun wuz yen yep yip yuk yon yum yup zag zed zen zig zit was son ton won put").split(" ");
+  var REALOK = {};
+  Object.keys(REAL).forEach(function (w) {
+    if (NOTWORDS.indexOf(w) >= 0) return;
+    if (/[wy]$/.test(w) || /[aeiou]r$/.test(w) || /^[aeiou]/.test(w)) return;
+    REALOK[w] = true;
+  });
   // Letter styles the teacher can choose from. The first is the original.
   var FONTS = [
     { id: "teachers", name: "Teachers", w: 500, css: 'Teachers, "Century Gothic", Andika, system-ui, sans-serif' },
@@ -337,7 +360,7 @@
   var state = {
     pools: PRESETS.standard.map(function (a) { return a.slice(); }),
     softc: true,
-    nonsense: true,
+    wordType: "nonsense",
     hideLast: false,
     font: "teachers",
     fv: 3,
@@ -352,7 +375,8 @@
       });
       if (ok) state.pools = saved.pools;
       if (typeof saved.softc === "boolean") state.softc = saved.softc;
-      if (typeof saved.nonsense === "boolean") state.nonsense = saved.nonsense;
+      if (saved.wordType === "nonsense" || saved.wordType === "real" || saved.wordType === "both") state.wordType = saved.wordType;
+      else if (saved.nonsense === false) state.wordType = "both";
       if (typeof saved.hideLast === "boolean") state.hideLast = saved.hideLast;
       // fv marks choices made since Teachers became the starting style; older saved choices switch to it once.
       if (typeof saved.font === "string" && saved.fv === 3) state.font = saved.font;
@@ -397,7 +421,8 @@
   function bad(w) {
     var s = w.join("");
     if (BLOCK.indexOf(s) >= 0) return true;
-    if (state.nonsense && REAL[s] === true) return true;
+    if (state.wordType === "nonsense" && REAL[s] === true) return true;
+    if (state.wordType === "real" && REALOK[s] !== true) return true;
     if (w[0] === "w" && w[1] === "a") return true;   // "wa" does not say short a (was, wand), so a never follows w
     if (state.softc && (w[0] === "c" || w[0] === "g") && (w[1] === "e" || w[1] === "i")) return true;
     return false;
@@ -411,8 +436,18 @@
   }
 
   // Choose a new letter for one position. Returns null if nothing else fits.
+  // Letters in use: a running game uses that student's set; otherwise the set chosen in settings.
+  function customFor(key) { return key && typeof scores !== "undefined" && scores.sounds && scores.sounds[key] ? scores.sounds[key] : null; }
+  function P() { return (game && game.pools) || customFor(soundKey) || state.pools; }
+  function ed() {   // the letters being edited in settings; a student gets their own copy on the first change
+    if (!soundKey) return state.pools;
+    if (!scores.sounds[soundKey]) scores.sounds[soundKey] = state.pools.map(function (a) { return a.slice(); });
+    return scores.sounds[soundKey];
+  }
+  function saveEd() { if (soundKey) saveScores(); else save(); }
+  var soundKey = "";   // "" = everyone; otherwise "p|Name" (student) or "|Name" (group)
   function nextLetter(pos, used) {
-    var choices = shuffled(state.pools[pos]);
+    var choices = shuffled(P()[pos]);
     for (var i = 0; i < choices.length; i++) {
       if (choices[i] === word[pos]) continue;
       var trial = word.slice(); trial[pos] = choices[i];
@@ -423,10 +458,10 @@
   function freshWord() {
     var prev = word.join("");
     for (var n = 0; n < 200; n++) {
-      var w = [pick(state.pools[0]), pick(state.pools[1]), pick(state.pools[2])];
+      var w = [pick(P()[0]), pick(P()[1]), pick(P()[2])];
       if (!bad(w) && (w.join("") !== prev || n > 150)) return w;
     }
-    return [state.pools[0][0], state.pools[1][0], state.pools[2][0]];
+    return [P()[0][0], P()[1][0], P()[2][0]];
   }
 
   var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -518,12 +553,19 @@
       OPTIONS[p].forEach(function (l) {
         var b = document.createElement("button");
         b.className = "chip"; b.textContent = l; b.dataset.pos = p; b.dataset.l = l;
-        b.setAttribute("aria-pressed", state.pools[p].indexOf(l) >= 0 ? "true" : "false");
+        b.setAttribute("aria-pressed", (customFor(soundKey) || state.pools)[p].indexOf(l) >= 0 ? "true" : "false");
         box.appendChild(b);
       });
     }
+    buildWho();
     document.getElementById("softc").checked = state.softc;
-    document.getElementById("nonsense").checked = state.nonsense;
+    document.getElementById("wordType").innerHTML = [["nonsense", "Nonsense words"], ["real", "Real words"], ["both", "Both"]].map(function (o) {
+      return '<button class="opt" data-wt="' + o[0] + '" aria-pressed="' + (state.wordType === o[0]) + '">' + o[1] + "</button>";
+    }).join("");
+    var wn = document.getElementById("wordNote");
+    if (state.wordType === "real") wn.textContent = realFits() ? "Only real short-vowel words come up. Choose more letters if the same words repeat." : "No real word fits the letters chosen below. Add more letters.";
+    else if (state.wordType === "nonsense") wn.textContent = "Real words are skipped.";
+    else wn.textContent = "Real and nonsense words are mixed.";
     document.getElementById("hideLast").checked = state.hideLast;
     document.getElementById("fonts").innerHTML = FONTS.map(function (f) {
       return '<button class="fontpick" data-font="' + f.id + '" aria-pressed="' + (f.id === state.font) + '"><b style=\'font-weight:' + (f.w || 400) + ';font-family:' + f.css.replace(/"/g, "&quot;") + '\'>a g t y</b><span>' + f.name + "</span></button>";
@@ -531,33 +573,57 @@
     document.getElementById("showArrow").checked = state.arrow;
   }
   function order(p) {
-    state.pools[p] = OPTIONS[p].filter(function (l) { return state.pools[p].indexOf(l) >= 0; });
+    var a = ed(); a[p] = OPTIONS[p].filter(function (l) { return a[p].indexOf(l) >= 0; });
+  }
+  function nameOf(key) { return key.slice(key.indexOf("|") + 1); }
+  function buildWho() {
+    var names = scores.people.map(function (n) { return "p|" + n; }).concat(scores.groups.map(function (n) { return "|" + n; }));
+    var box = document.getElementById("whoSounds");
+    box.innerHTML = '<button class="opt" data-who="" aria-pressed="' + (soundKey === "") + '">Everyone</button>' + names.map(function (k) {
+      return '<button class="opt" data-who="' + esc(k) + '" aria-pressed="' + (k === soundKey) + '">' + esc(nameOf(k)) + (scores.sounds[k] ? " &#10003;" : "") + "</button>";
+    }).join("");
+    var note = document.getElementById("whoNote");
+    if (!names.length) note.textContent = "These letters are used for everyone. Add student names in Play 10 flips to give each student their own set.";
+    else if (!soundKey) note.textContent = "Used for anyone without their own set. A check mark means that student has their own set.";
+    else if (scores.sounds[soundKey]) note.innerHTML = esc(nameOf(soundKey)) + " has their own set. <button class=\"link\" style=\"padding:0;color:#2f4f9e\" data-resetwho=\"1\">Use everyone's set instead</button>";
+    else note.textContent = nameOf(soundKey) + " is using everyone's set. Change a letter below to give " + nameOf(soundKey) + " their own.";
   }
   scrim.addEventListener("click", function (e) {
     var t = e.target;
     if (t === scrim) { closeSet(); return; }
+    var wtb = t.closest ? t.closest("[data-wt]") : null;
+    if (wtb) { state.wordType = wtb.dataset.wt; save(); buildChips(); return; }
+    var wh = t.closest ? t.closest("[data-who]") : null;
+    if (wh) { soundKey = wh.dataset.who; buildChips(); return; }
+    if (t.dataset.resetwho) { delete scores.sounds[soundKey]; saveScores(); buildChips(); return; }
     var fp = t.closest ? t.closest("[data-font]") : null;
     if (fp) { state.font = fp.dataset.font; save(); applyFont(); buildChips(); return; }
     if (t.classList.contains("chip")) {
-      var p = +t.dataset.pos, l = t.dataset.l, i = state.pools[p].indexOf(l);
+      var p = +t.dataset.pos, l = t.dataset.l, cur = customFor(soundKey) || state.pools, i = cur[p].indexOf(l);
       if (i >= 0) {
-        if (state.pools[p].length === 1) return; // keep at least one
-        state.pools[p].splice(i, 1);
-      } else { state.pools[p].push(l); order(p); }
+        if (cur[p].length === 1) return; // keep at least one
+        ed()[p].splice(i, 1);
+      } else { ed()[p].push(l); order(p); }
       t.setAttribute("aria-pressed", i >= 0 ? "false" : "true");
-      save();
+      saveEd();
+      if (soundKey) buildWho();
     } else if (t.dataset.preset) {
-      state.pools = PRESETS[t.dataset.preset].map(function (a) { return a.slice(); });
-      save(); buildChips();
+      var np = PRESETS[t.dataset.preset].map(function (a) { return a.slice(); });
+      if (soundKey) scores.sounds[soundKey] = np; else state.pools = np;
+      saveEd(); buildChips();
     } else if (t.dataset.all) {
-      state.pools[+t.dataset.all] = OPTIONS[+t.dataset.all].slice(); save(); buildChips();
+      ed()[+t.dataset.all] = OPTIONS[+t.dataset.all].slice(); saveEd(); buildChips();
     } else if (t.dataset.one) {
       // "Clear" leaves one letter on so the card always has something to show.
-      var q = +t.dataset.one; state.pools[q] = [OPTIONS[q][0]]; save(); buildChips();
+      var q = +t.dataset.one; ed()[q] = [OPTIONS[q][0]]; saveEd(); buildChips();
     }
   });
   document.getElementById("softc").addEventListener("change", function (e) { state.softc = e.target.checked; save(); });
-  document.getElementById("nonsense").addEventListener("change", function (e) { state.nonsense = e.target.checked; save(); });
+  function realFits() {
+    var q = customFor(soundKey) || state.pools, n = 0;
+    q[0].forEach(function (a) { q[1].forEach(function (b) { q[2].forEach(function (c) { if (REALOK[a + b + c] && BLOCK.indexOf(a + b + c) < 0 && !(state.softc && (a === "c" || a === "g") && (b === "e" || b === "i"))) n++; }); }); });
+    return n;
+  }
   function setHideLast(on, animate) {
     state.hideLast = on; save();
     document.getElementById("hideLast").checked = on;
@@ -580,7 +646,7 @@
   function closeSet() {
     scrim.classList.remove("open");
     // If the word on screen uses letters that are now off, deal a new one.
-    var stale = word.some(function (l, i) { return state.pools[i].indexOf(l) < 0; }) || bad(word);
+    var stale = word.some(function (l, i) { return P()[i].indexOf(l) < 0; }) || bad(word);
     if (stale) newWord(false);
     document.getElementById("openSet").focus();
   }
@@ -590,15 +656,19 @@
   var game = null;                 // { group, results: [true/false, ...] } while a game is running
   var FLIPS = 10;
   var SKEY = "cvc-flipper-scores-v1";
-  var scores = { groups: [], people: [], games: [], last: "" };   // a game with k: "p" belongs to one student   // games: { g: group, d: "YYYY-MM-DD", s: score, t: time }
+  var scores = { groups: [], people: [], games: [], last: "", sounds: {} };   // a game with k: "p" belongs to one student   // games: { g: group, d: "YYYY-MM-DD", s: score, t: time }
   var store = null;                // the teacher's own Claude data, when available
   function cleanScores(v) {
-    var out = { groups: [], people: [], games: [], last: "" };
+    var out = { groups: [], people: [], games: [], last: "", sounds: {} };
     if (!v || typeof v !== "object") return out;
     if (Array.isArray(v.groups)) v.groups.forEach(function (g) { if (typeof g === "string" && g && out.groups.indexOf(g) < 0) out.groups.push(g); });
     if (Array.isArray(v.people)) v.people.forEach(function (g) { if (typeof g === "string" && g && out.people.indexOf(g) < 0) out.people.push(g); });
     if (Array.isArray(v.games)) v.games.forEach(function (x) {
       if (x && typeof x.g === "string" && typeof x.d === "string" && typeof x.s === "number" && typeof x.t === "number") { var r = { g: x.g, d: x.d, s: x.s, t: x.t }; if (x.m === "hide") r.m = "hide"; if (x.k === "p") r.k = "p"; out.games.push(r); }
+    });
+    if (v.sounds && typeof v.sounds === "object") Object.keys(v.sounds).forEach(function (k) {
+      var p = v.sounds[k];
+      if (/^p?\|/.test(k) && Array.isArray(p) && p.length === 3 && p.every(function (a, i) { return Array.isArray(a) && a.length > 0 && a.every(function (l) { return OPTIONS[i].indexOf(l) >= 0; }); })) out.sounds[k] = p.map(function (a) { return a.slice(); });
     });
     if (typeof v.last === "string") out.last = v.last;
     if (v.mode === "hide") out.mode = "hide";
@@ -626,9 +696,11 @@
           remote.games.forEach(function (x) { if (!seen[x.t]) { scores.games.push(x); added++; } });
           remote.groups.forEach(function (g) { if (scores.groups.indexOf(g) < 0) scores.groups.push(g); });
           remote.people.forEach(function (g) { if (scores.people.indexOf(g) < 0) scores.people.push(g); });
+          var addedSounds = 0;
+          Object.keys(remote.sounds).forEach(function (k) { if (!scores.sounds[k]) { scores.sounds[k] = remote.sounds[k]; addedSounds++; } });
           if (!scores.last) { scores.last = remote.last; scores.lastKind = remote.lastKind; }
           store = ref;
-          if (scores.games.length !== remote.games.length || scores.groups.length !== remote.groups.length || scores.people.length !== remote.people.length) saveScores();
+          if (addedSounds || Object.keys(scores.sounds).length !== Object.keys(remote.sounds).length || scores.games.length !== remote.games.length || scores.groups.length !== remote.groups.length || scores.people.length !== remote.people.length) saveScores();
           else { try { localStorage.setItem(SKEY, JSON.stringify(scores)); } catch (e) {} }
           if (gameScrim.classList.contains("open") && sheetView) sheetView();
         });
@@ -664,29 +736,70 @@
     scores.games.forEach(function (x) { if (sameReader(x, name, kind) && (b === null || x.s > b)) b = x.s; });
     return b;
   }
+  // Letters for the chosen student, picked right in the Play 10 flips screen.
+  var lettersOpen = false;
+  function sameSet(a, b) { return a.length === b.length && a.every(function (l) { return b.indexOf(l) >= 0; }); }
+  function brief(a, word) { return a.length <= 12 ? a.join(" ") : a.length + " " + word; }
+  function setSimple(key, C, V) {
+    var L = C.filter(function (l) { return l !== "w"; });
+    function ord(i, x) { return OPTIONS[i].filter(function (l) { return x.indexOf(l) >= 0; }); }
+    scores.sounds[key] = [ord(0, C), ord(1, V), ord(2, L)]; saveScores();
+  }
+  function lettersBlock() {
+    if (!chosen) return "";
+    var key = chosenKind + "|" + chosen, own = !!customFor(key), pl = customFor(key) || state.pools;
+    var simple = sameSet(pl[2], pl[0].filter(function (l) { return l !== "w"; }));
+    var h = '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:18px"><h3 style="margin:0;font-size:1rem">Letters for ' + esc(chosen) + "</h3>" +
+      '<button class="link" style="color:#2f4f9e;padding:0;font-size:.85rem" data-act="lettersToggle">' + (lettersOpen ? "Hide" : "Choose letters") + "</button></div>" +
+      '<p style="margin:4px 0 0;font-size:.85rem">' + (own ? "Own letters" : "Everyone's letters") + ": " + (simple ? esc(brief(pl[0], "consonants")) + " &nbsp;|&nbsp; vowels " + esc(pl[1].join(" ")) : "different first and last card letters") + "</p>";
+    if (!lettersOpen) return h;
+    h += '<div class="quick" style="margin:8px 0 0"><button class="small" data-lp="standard">Standard CVC</button><button class="small" data-lp="bak1">BAK 1 letters</button><button class="small" data-lp="every">Every letter</button></div>';
+    function row(label, pos, cls) {
+      return '<p style="margin:10px 0 0;font-size:.85rem">' + label + '</p><div class="chips' + cls + '" style="margin-top:4px">' + OPTIONS[pos].map(function (l) {
+        return '<button class="chip" data-lt="' + pos + l + '" aria-pressed="' + (pl[pos].indexOf(l) >= 0) + '">' + l + "</button>";
+      }).join("") + "</div>";
+    }
+    if (!simple) {
+      h += row("First card", 0, "") + row("Middle card (vowel)", 1, " v") + row("Last card", 2, "");
+      if (own) h += '<p style="margin:10px 0 0"><button class="link" style="color:#2f4f9e;padding:0" data-act="lettersreset">Use everyone\'s letters instead</button></p>';
+      return h;
+    }
+    h += '<p style="margin:10px 0 0;font-size:.85rem">Consonants (first and last card)</p><div class="chips" style="margin-top:4px">' + OPTIONS[0].map(function (l) {
+      return '<button class="chip" data-lt="0' + l + '" aria-pressed="' + (pl[0].indexOf(l) >= 0) + '">' + l + "</button>";
+    }).join("") + '</div><p style="margin:10px 0 0;font-size:.85rem">Vowels</p><div class="chips v" style="margin-top:4px">' + OPTIONS[1].map(function (l) {
+      return '<button class="chip" data-lt="1' + l + '" aria-pressed="' + (pl[1].indexOf(l) >= 0) + '">' + l + "</button>";
+    }).join("") + "</div>";
+    if (own) h += '<p style="margin:10px 0 0"><button class="link" style="color:#2f4f9e;padding:0" data-act="lettersreset">Use everyone\'s letters instead</button></p>';
+    return h;
+  }
   function startView() {
+    var keepName = document.getElementById("newGroup") ? document.getElementById("newGroup").value : "";
     if (!chosen && listOf(scores.lastKind || "").indexOf(scores.last) >= 0) { chosen = scores.last; chosenKind = scores.lastKind || ""; }
     if (!gameMode) gameMode = scores.mode === "hide" ? "hide" : "open";
+    var both = scores.groups.length && scores.people.length, anyNames = scores.groups.length + scores.people.length;
+    var H = 'margin:0;font-size:1rem';
+    var groupsHtml = [["", "Groups"], ["p", "Students"]].map(function (kd) {
+      var list = listOf(kd[0]); if (!list.length) return "";
+      return (both ? '<p style="margin:10px 0 2px;font-size:.85rem">' + kd[1] + "</p>" : "") + '<div class="pick" style="margin:8px 0 0">' + list.map(function (g) {
+        if (editNames) { var dk = kd[0] + "|" + g; return '<button class="small" style="color:#b3261e;border-color:#b3261e" data-del="' + esc(dk) + '">' + (sureDel === dk ? "Tap again to delete " + esc(g) : esc(g) + " &#10005;") + "</button>"; }
+        return '<button class="opt" data-group="' + esc(g) + '" data-kind="' + kd[0] + '" aria-pressed="' + (g === chosen && kd[0] === chosenKind) + '">' + esc(g) + (bestScore(g, kd[0]) !== null ? starBadge(bestScore(g, kd[0])) : "") + "</button>";
+      }).join("") + "</div>";
+    }).join("");
     gameSheet.innerHTML =
       '<div class="sheet-top"><h2>Play 10 flips</h2><button class="small" data-act="close">Cancel</button></div>' +
-      "<p>The student reads 10 words. After each word, press Read it or Not yet. Then a new word comes up.</p>" +
-      "<h3 style=\"margin:14px 0 0;font-size:1rem\">Which game?</h3>" +
-      '<div class="pick"><button class="small" data-mode="open" aria-pressed="' + (gameMode === "open") + '">All cards showing</button>' +
-      '<button class="small" data-mode="hide" aria-pressed="' + (gameMode === "hide") + '">Last card hidden</button></div>' +
-      (gameMode === "hide" ? "<p>The last card starts face down for every word. Tap it to flip it over.</p>" : "") +
-      "<h3 style=\"margin:14px 0 0;font-size:1rem\">Who is reading?</h3>" +
-      (scores.groups.length + scores.people.length ? '<div style="margin-top:4px"><button class="link" style="color:#2f4f9e;padding:4px 0" data-act="editnames">' + (editNames ? "Done removing names" : "Remove names") + "</button></div>" : "") +
-      [["", "Groups"], ["p", "Students"]].map(function (kd) {
-        var list = listOf(kd[0]); if (!list.length) return "";
-        return '<p style="margin:10px 0 0">' + kd[1] + '</p><div class="pick" style="margin-top:4px">' + list.map(function (g) {
-          if (editNames) { var dk = kd[0] + "|" + g; return '<button class="small" style="color:#b3261e;border-color:#b3261e" data-del="' + esc(dk) + '">' + (sureDel === dk ? "Tap again to delete " + esc(g) : esc(g) + " &#10005;") + "</button>"; }
-          return '<button class="small" data-group="' + esc(g) + '" data-kind="' + kd[0] + '" aria-pressed="' + (g === chosen && kd[0] === chosenKind) + '">' + esc(g) + (bestScore(g, kd[0]) !== null ? starBadge(bestScore(g, kd[0])) : "") + "</button>";
-        }).join("") + "</div>";
-      }).join("") +
-      (scores.groups.length + scores.people.length ? "" : "<p>Nobody yet. Add a student below.</p>") +
-      '<div class="addrow"><input id="newGroup" type="text" maxlength="30" placeholder="Student name" autocomplete="off" aria-label="Student name">' +
-      '<button class="small" data-act="addp">Add student</button></div>' +
-      '<div class="foot"><button class="btn primary" data-act="start"' + (chosen ? "" : " disabled") + ">Start</button></div>";
+      '<p style="margin:0 0 14px">After each word, tap Read it or Not yet.</p>' +
+      '<h3 style="' + H + '">Game</h3>' +
+      '<div class="pick col" style="margin:6px 0 0"><button class="opt" data-mode="open" aria-pressed="' + (gameMode === "open") + '">All cards showing</button>' +
+      '<button class="opt" data-mode="hide" aria-pressed="' + (gameMode === "hide") + '">Last card hidden</button></div>' +
+      (gameMode === "hide" ? '<p style="margin:0;font-size:.85rem">The last card starts face down. Tap anywhere to flip it.</p>' : "") +
+      '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:18px"><h3 style="' + H + '">Who is reading?</h3>' +
+      (anyNames ? '<button class="link" style="color:#2f4f9e;padding:0;font-size:.85rem" data-act="editnames">' + (editNames ? "Done" : "Remove names") + "</button>" : "") + "</div>" +
+      (anyNames ? groupsHtml : '<p style="margin:8px 0 0">Add a student to begin.</p>') +
+      lettersBlock() +
+      '<div class="addrow" style="margin:18px 0 4px"><input id="newGroup" type="text" maxlength="30" placeholder="Add a student name" autocomplete="off" aria-label="Student name">' +
+      '<button class="small" data-act="addp">Add</button></div>' +
+      '<div class="foot" style="margin-top:14px"><button class="btn primary" style="min-width:220px" data-act="start"' + (chosen ? "" : " disabled") + ">" + (chosen ? "Start" : "Choose a name to start") + "</button></div>";
+    if (keepName) document.getElementById("newGroup").value = keepName;
   }
   function addGroup(kind) {
     var inp = document.getElementById("newGroup"); if (!inp) return;
@@ -719,7 +832,7 @@
     if (!chosen) return;
     if (!gameMode) gameMode = "open";
     scores.last = chosen; scores.lastKind = chosenKind; scores.mode = gameMode; saveScores();
-    game = { group: chosen, kind: chosenKind, results: [], used: [], hide: gameMode === "hide" };
+    game = { group: chosen, kind: chosenKind, results: [], used: [], hide: gameMode === "hide", pools: customFor(chosenKind + "|" + chosen) || state.pools };
     faceDown[2] = game.hide;
     closeSheet(); setGameUi(true); drawHud(); newWord(true);
   }
@@ -728,7 +841,7 @@
     game.used.push(word.join(""));
     var w = null;
     for (var n = 0; n < 300 && !w; n++) {
-      var t = [pick(state.pools[0]), pick(state.pools[1]), pick(state.pools[2])];
+      var t = [pick(P()[0]), pick(P()[1]), pick(P()[2])];
       if (!bad(t) && game.used.indexOf(t.join("")) < 0) w = t;
     }
     if (!w) w = freshWord();
@@ -767,6 +880,7 @@
   function deleteReader(nm, kd) {
     scores.games = scores.games.filter(function (x) { return !sameReader(x, nm, kd); });
     var lst = listOf(kd), ix = lst.indexOf(nm); if (ix >= 0) lst.splice(ix, 1);
+    delete scores.sounds[kd + "|" + nm]; if (soundKey === kd + "|" + nm) soundKey = "";
     if (scores.last === nm && (scores.lastKind || "") === kd) { scores.last = ""; scores.lastKind = ""; }
     if (chosen === nm && chosenKind === kd) { chosen = ""; chosenKind = ""; }
     saveScores();
@@ -804,6 +918,23 @@
   gameScrim.addEventListener("click", function (e) {
     var t = e.target;
     if (t === gameScrim) { if (!game) closeSheet(); return; }
+    if (t.closest) t = t.closest("button") || t;
+    if (t.dataset.lt || t.dataset.lp) {
+      var k = chosenKind + "|" + chosen, cur = customFor(k) || state.pools;
+      if (t.dataset.lp) { scores.sounds[k] = PRESETS[t.dataset.lp].map(function (a) { return a.slice(); }); saveScores(); }
+      else {
+        var pos = +t.dataset.lt.charAt(0), l = t.dataset.lt.slice(1), P3 = cur.map(function (a) { return a.slice(); }), arr = P3[pos], i = arr.indexOf(l);
+        var wasSimple = sameSet(cur[2], cur[0].filter(function (x) { return x !== "w"; }));
+        if (i >= 0) { if (arr.length === 1) return; arr.splice(i, 1); } else arr.push(l);
+        if (wasSimple && pos === 0) {   // one consonant row drives both the first and last card
+          if (!P3[0].filter(function (x) { return x !== "w"; }).length) return;
+          setSimple(k, P3[0], P3[1]);
+        } else {
+          P3[pos] = OPTIONS[pos].filter(function (x) { return arr.indexOf(x) >= 0; }); scores.sounds[k] = P3; saveScores();
+        }
+      }
+      startView(); return;
+    }
     if (t.dataset.group) { chosen = t.dataset.group; chosenKind = t.dataset.kind || ""; startView(); }
     else if (t.dataset.mode) { gameMode = t.dataset.mode; startView(); }
     else if (t.dataset.show) { showGroup = t.dataset.show; showKind = t.dataset.kind || ""; sure = 0; sureName = ""; scoresView(); }
@@ -828,6 +959,9 @@
     else if (t.dataset.act === "close") { editNames = false; sureDel = ""; closeSheet(); }
     else if (t.dataset.act === "add") addGroup("");
     else if (t.dataset.act === "addp") addGroup("p");
+    else if (t.dataset.act === "lettersToggle") { lettersOpen = !lettersOpen; startView(); }
+    else if (t.dataset.act === "lettersreset") { delete scores.sounds[chosenKind + "|" + chosen]; saveScores(); startView(); }
+    else if (t.dataset.act === "moreletters") { soundKey = chosenKind + "|" + chosen; editNames = false; closeSheet(); document.getElementById("openSet").click(); }
     else if (t.dataset.act === "start") startGame();
     else if (t.dataset.act === "again") { startGame(); }
     else if (t.dataset.act === "scores") { sure = 0; openSheet(scoresView); }
