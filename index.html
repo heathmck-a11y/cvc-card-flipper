@@ -664,14 +664,14 @@
     if (Array.isArray(v.groups)) v.groups.forEach(function (g) { if (typeof g === "string" && g && out.groups.indexOf(g) < 0) out.groups.push(g); });
     if (Array.isArray(v.people)) v.people.forEach(function (g) { if (typeof g === "string" && g && out.people.indexOf(g) < 0) out.people.push(g); });
     if (Array.isArray(v.games)) v.games.forEach(function (x) {
-      if (x && typeof x.g === "string" && typeof x.d === "string" && typeof x.s === "number" && typeof x.t === "number") { var r = { g: x.g, d: x.d, s: x.s, t: x.t }; if (x.m === "hide") r.m = "hide"; if (x.k === "p") r.k = "p"; out.games.push(r); }
+      if (x && typeof x.g === "string" && typeof x.d === "string" && typeof x.s === "number" && typeof x.t === "number") { var r = { g: x.g, d: x.d, s: x.s, t: x.t }; if (x.m === "hide" || x.m === "chain") r.m = x.m; if (x.k === "p") r.k = "p"; out.games.push(r); }
     });
     if (v.sounds && typeof v.sounds === "object") Object.keys(v.sounds).forEach(function (k) {
       var p = v.sounds[k];
       if (/^p?\|/.test(k) && Array.isArray(p) && p.length === 3 && p.every(function (a, i) { return Array.isArray(a) && a.length > 0 && a.every(function (l) { return OPTIONS[i].indexOf(l) >= 0; }); })) out.sounds[k] = p.map(function (a) { return a.slice(); });
     });
     if (typeof v.last === "string") out.last = v.last;
-    if (v.mode === "hide") out.mode = "hide";
+    if (v.mode === "hide" || v.mode === "chain") out.mode = v.mode;
     if (v.lastKind === "p") out.lastKind = "p";
     return out;
   }
@@ -775,7 +775,7 @@
   function startView() {
     var keepName = document.getElementById("newGroup") ? document.getElementById("newGroup").value : "";
     if (!chosen && listOf(scores.lastKind || "").indexOf(scores.last) >= 0) { chosen = scores.last; chosenKind = scores.lastKind || ""; }
-    if (!gameMode) gameMode = scores.mode === "hide" ? "hide" : "open";
+    if (!gameMode) gameMode = scores.mode === "hide" || scores.mode === "chain" ? scores.mode : "open";
     var both = scores.groups.length && scores.people.length, anyNames = scores.groups.length + scores.people.length;
     var H = 'margin:0;font-size:1rem';
     var groupsHtml = [["", "Groups"], ["p", "Students"]].map(function (kd) {
@@ -790,8 +790,10 @@
       '<p style="margin:0 0 14px">After each word, tap Read it or Not yet.</p>' +
       '<h3 style="' + H + '">Game</h3>' +
       '<div class="pick col" style="margin:6px 0 0"><button class="opt" data-mode="open" aria-pressed="' + (gameMode === "open") + '">All cards showing</button>' +
-      '<button class="opt" data-mode="hide" aria-pressed="' + (gameMode === "hide") + '">Last card hidden</button></div>' +
+      '<button class="opt" data-mode="hide" aria-pressed="' + (gameMode === "hide") + '">Last card hidden</button>' +
+      '<button class="opt" data-mode="chain" aria-pressed="' + (gameMode === "chain") + '">Word chain</button></div>' +
       (gameMode === "hide" ? '<p style="margin:0;font-size:.85rem">The last card starts face down. Tap anywhere to flip it.</p>' : "") +
+      (gameMode === "chain" ? '<p style="margin:0;font-size:.85rem">All three cards show. Each new word changes one card.</p>' : "") +
       '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:18px"><h3 style="' + H + '">Who is reading?</h3>' +
       (anyNames ? '<button class="link" style="color:#2f4f9e;padding:0;font-size:.85rem" data-act="editnames">' + (editNames ? "Done" : "Remove names") + "</button>" : "") + "</div>" +
       (anyNames ? groupsHtml : '<p style="margin:8px 0 0">Add a student to begin.</p>') +
@@ -811,7 +813,7 @@
 
   // --- the game itself ---
   function drawHud() {
-    document.getElementById("hudWho").textContent = game.group + (game.hide ? "  ·  Last card hidden" : "") + "  ·  Word " + Math.min(game.results.length + 1, FLIPS) + " of " + FLIPS;
+    document.getElementById("hudWho").textContent = game.group + (game.hide ? "  ·  Last card hidden" : "") + (game.chain ? "  ·  Word chain" : "") + "  ·  Word " + Math.min(game.results.length + 1, FLIPS) + " of " + FLIPS;
     var h = "";
     for (var i = 0; i < FLIPS; i++) {
       var r = game.results[i];
@@ -832,13 +834,26 @@
     if (!chosen) return;
     if (!gameMode) gameMode = "open";
     scores.last = chosen; scores.lastKind = chosenKind; scores.mode = gameMode; saveScores();
-    game = { group: chosen, kind: chosenKind, results: [], used: [], hide: gameMode === "hide", pools: customFor(chosenKind + "|" + chosen) || state.pools };
+    game = { group: chosen, kind: chosenKind, results: [], used: [], hide: gameMode === "hide", chain: gameMode === "chain", lastPos: -1, pools: customFor(chosenKind + "|" + chosen) || state.pools };
     faceDown[2] = game.hide;
     closeSheet(); setGameUi(true); drawHud(); newWord(true);
   }
   function nextFlip() {
     // A whole new word after every mark. Try not to repeat a word within one game.
     game.used.push(word.join(""));
+    if (game.chain) {
+      // Word chain: change exactly one card, preferring a different card than last time.
+      var ord = shuffled([0, 1, 2]).filter(function (q) { return q !== game.lastPos; });
+      if (game.lastPos >= 0) ord.push(game.lastPos);
+      for (var oi = 0; oi < ord.length; oi++) {
+        var q = ord[oi], opts = shuffled(P()[q]);
+        for (var ci = 0; ci < opts.length; ci++) {
+          if (opts[ci] === word[q]) continue;
+          var trial = word.slice(); trial[q] = opts[ci];
+          if (!bad(trial) && game.used.indexOf(trial.join("")) < 0) { game.lastPos = q; show(q, opts[ci], true); return; }
+        }
+      }
+    }
     var w = null;
     for (var n = 0; n < 300 && !w; n++) {
       var t = [pick(P()[0]), pick(P()[1]), pick(P()[2])];
@@ -859,7 +874,7 @@
   function finishGame() {
     var score = game.results.filter(Boolean).length, group = game.group, kind = game.kind;
     var rec = { g: group, d: today(), s: score, t: Date.now() };
-    if (game.hide) rec.m = "hide";
+    if (game.hide) rec.m = "hide"; else if (game.chain) rec.m = "chain";
     if (kind === "p") rec.k = "p";
     scores.games.push(rec);
     saveScores();
@@ -908,7 +923,7 @@
       (any && !days.length ? "<p>No games yet for " + esc(showGroup) + ".</p>" : "") +
       days.map(function (d) {
         return '<div class="day"><h4>' + esc(niceDate(d)) + "</h4>" + byDay[d].slice().reverse().map(function (x) {
-          return '<div class="game"><span><b>' + x.s + "</b> out of " + FLIPS + (x.m === "hide" ? " · last card hidden" : "") + '</span><button class="small" data-remove="' + x.t + '">' + (sure === x.t ? "Tap again to remove" : "Remove") + "</button></div>";
+          return '<div class="game"><span><b>' + x.s + "</b> out of " + FLIPS + (x.m === "hide" ? " · last card hidden" : x.m === "chain" ? " · word chain" : "") + '</span><button class="small" data-remove="' + x.t + '">' + (sure === x.t ? "Tap again to remove" : "Remove") + "</button></div>";
         }).join("") + "</div>";
       }).join("") +
       (any && showGroup ? '<div style="margin-top:16px;text-align:center"><button class="small" style="color:#b3261e;border-color:#b3261e" data-delname="1">' + (sureName === showKind + "|" + showGroup ? "Tap again to delete " + esc(showGroup) + " and all scores" : "Delete " + esc(showGroup) + (showKind === "p" ? " (student)" : " (group)")) + "</button></div>" : "") +
