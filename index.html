@@ -62,7 +62,11 @@
     min-height: 46px;
   }
   .btn.primary { background: var(--accent); color: var(--accent-ink); }
-  #hideToggle[aria-pressed="true"] { background: rgba(255, 210, 63, .18); }
+  .btn.big { font-size: 1.5rem; padding: 16px 44px; min-height: 64px; box-shadow: 0 5px 0 #c79a12; }
+  .btn.big:active { transform: translateY(3px); box-shadow: 0 2px 0 #c79a12; }
+  .controls.row2 { gap: 12px; }
+  .controls.stack .link.faint { flex-basis: auto; margin-top: 2px; }
+  .controls.stack { flex-direction: column; align-items: center; gap: 12px; }
   .btn:focus-visible, .card:focus-visible, .chip:focus-visible { outline: 3px solid #f2a900; outline-offset: 3px; }
 
   main {
@@ -220,11 +224,12 @@
       <path d="M12 10 L6 3 L22 10 Z M12 30 L6 37 L22 30 Z" fill="#ff5d5d"/>
     </svg>
   </div>
-  <div class="controls" id="freeControls">
-    <button class="btn primary" id="newWord">New word</button>
-    <button class="btn" id="hideToggle" aria-pressed="false">Last card: showing</button>
-    <button class="btn" id="playBtn">Play 10 flips</button>
-    <button class="btn" id="scoresBtn">Scores</button>
+  <div class="controls stack" id="freeControls">
+    <button class="btn primary big" id="playBtn">Play 10 flips</button>
+    <div class="controls row2">
+      <button class="btn" id="newWord">New word (practice)</button>
+      <button class="btn" id="scoresBtn">Scores</button>
+    </div>
     <button class="link faint" id="allClues" aria-pressed="false">Show picture clues</button>
   </div>
   <div id="gameControls" hidden>
@@ -270,7 +275,7 @@
       <div class="fonts" id="fonts"></div>
     </div>
 
-    <label class="check"><input type="checkbox" id="hideLast"> Practice with the last card face down (tap the card to flip it over)</label>
+    <label class="check"><input type="checkbox" id="hideLast"> Practice with the last card face down (tap anywhere on the screen to flip it over)</label>
     <label class="check"><input type="checkbox" id="nonsense"> Nonsense words only (skip real words)</label>
     <label class="check"><input type="checkbox" id="softc"> Skip c or g before e or i (ce, ci, ge, gi)</label>
     <label class="check"><input type="checkbox" id="showArrow"> Show blending arrow under the cards</label>
@@ -285,20 +290,21 @@
 (function () {
   var CONS = "bcdfghjklmnpqrstvwxyz".split("");
   var VOWELS = "aeiou".split("");
-  var OPTIONS = [CONS, VOWELS, CONS];
+  var LASTC = CONS.filter(function (l) { return l !== "w"; });   // w never ends a word on the last card
+  var OPTIONS = [CONS, VOWELS, LASTC];
 
   var PRESETS = {
     standard: [
       "bcdfghjklmnprstvwyz".split(""),
       VOWELS.slice(),
-      CONS.filter(function (l) { return l !== "x" && l !== "q"; })
+      LASTC.filter(function (l) { return l !== "x" && l !== "q"; })
     ],
     bak1: [
       "bmsrtngphlcfd".split(""),
       ["a", "i"],
       "bmstngpd".split("")
     ],
-    every: [CONS.slice(), VOWELS.slice(), CONS.slice()]
+    every: [CONS.slice(), VOWELS.slice(), LASTC.slice()]
   };
 
   // Letter strings that should never come up in front of students.
@@ -340,6 +346,7 @@
   try {
     var saved = JSON.parse(localStorage.getItem(KEY) || "null");
     if (saved && Array.isArray(saved.pools) && saved.pools.length === 3) {
+      if (Array.isArray(saved.pools[2]) && saved.pools[2].length > 1) saved.pools[2] = saved.pools[2].filter(function (l) { return l !== "w"; });
       var ok = saved.pools.every(function (p, i) {
         return Array.isArray(p) && p.length > 0 && p.every(function (l) { return OPTIONS[i].indexOf(l) >= 0; });
       });
@@ -553,14 +560,17 @@
   document.getElementById("nonsense").addEventListener("change", function (e) { state.nonsense = e.target.checked; save(); });
   function setHideLast(on, animate) {
     state.hideLast = on; save();
-    var b = document.getElementById("hideToggle");
-    b.setAttribute("aria-pressed", on ? "true" : "false");
-    b.textContent = on ? "Last card: hidden" : "Last card: showing";
     document.getElementById("hideLast").checked = on;
     if (!game && faceDown[2] !== on) { if (animate) turn(2, function () { faceDown[2] = on; }, true); else { faceDown[2] = on; paint(2); } }
   }
   document.getElementById("hideLast").addEventListener("change", function (e) { setHideLast(e.target.checked, false); });
-  document.getElementById("hideToggle").addEventListener("click", function () { setHideLast(!state.hideLast, true); });
+  // While the last card is face down, a tap anywhere on the screen (not on a button or a card) turns it over.
+  document.addEventListener("click", function (e) {
+    if (!faceDown[2]) return;
+    if (e.target.closest && e.target.closest("button, a, input, label, .sheet, .scrim, .card")) return;
+    if (document.getElementById("scrim").classList.contains("open") || document.getElementById("gameScrim").classList.contains("open")) return;
+    turn(2, function () { faceDown[2] = false; }, true);
+  });
   document.getElementById("showArrow").addEventListener("change", function (e) { state.arrow = e.target.checked; save(); applyArrow(); });
   function applyArrow() { document.getElementById("arrow").style.visibility = state.arrow ? "visible" : "hidden"; }
 
@@ -817,8 +827,6 @@
 
   applyArrow();
   applyFont();
-  document.getElementById("hideToggle").setAttribute("aria-pressed", state.hideLast ? "true" : "false");
-  document.getElementById("hideToggle").textContent = state.hideLast ? "Last card: hidden" : "Last card: showing";
   newWord(false);
 })();
 </script>
