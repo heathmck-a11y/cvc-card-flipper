@@ -213,6 +213,7 @@
 <main>
   <div class="hud" id="hud" hidden>
     <div class="who" id="hudWho"></div>
+    <div class="who" id="hudScores" style="font-weight:400;font-size:.95rem;margin-top:6px"></div>
     <div class="dots" id="dots"></div>
   </div>
   <div class="row" id="row">
@@ -654,7 +655,7 @@
 
   // ----- 10-flip game and daily scores -----
   var game = null;                 // { group, results: [true/false, ...] } while a game is running
-  var FLIPS = 10;
+  var FLIPS = 10, turnOrder = "rotate";   // flips per student, and whether students rotate or go one at a time
   var SKEY = "cvc-flipper-scores-v1";
   var scores = { groups: [], people: [], games: [], last: "", sounds: {} };   // a game with k: "p" belongs to one student   // games: { g: group, d: "YYYY-MM-DD", s: score, t: time }
   var store = null;                // the teacher's own Claude data, when available
@@ -724,6 +725,7 @@
   };
 
   // --- choose a group, then start ---
+  var turnsOn = false, taken = [];   // take-turns play: the students picked, in turn order
   var chosen = "", chosenKind = "", gameMode = "";   // chosenKind: "" for a group, "p" for one student
   function listOf(kind) { return kind === "p" ? scores.people : scores.groups; }
   function sameReader(x, name, kind) { return x.g === name && (x.k || "") === kind; }
@@ -773,35 +775,40 @@
     return h;
   }
   function startView() {
-    var keepName = document.getElementById("newGroup") ? document.getElementById("newGroup").value : "";
-    if (!chosen && listOf(scores.lastKind || "").indexOf(scores.last) >= 0) { chosen = scores.last; chosenKind = scores.lastKind || ""; }
+    var ta0 = document.getElementById("newNames"), val = ta0 ? ta0.value : null;
+    if (val === null) { val = ""; try { val = localStorage.getItem("cvcNames") || ""; } catch (e) {} }
+    var opts = { turns: 10, order: "rotate" };
+    try { var sv = JSON.parse(localStorage.getItem("cvcOpts") || "{}"); if (sv.turns) opts.turns = sv.turns; if (sv.order) opts.order = sv.order; } catch (e) {}
+    var cur = { turns: document.getElementById("turnsSel") ? document.getElementById("turnsSel").value : opts.turns, order: document.getElementById("orderSel") ? document.getElementById("orderSel").value : opts.order, mode: document.getElementById("modeSel") ? document.getElementById("modeSel").value : null };
     if (!gameMode) gameMode = scores.mode === "hide" || scores.mode === "chain" ? scores.mode : "open";
-    var both = scores.groups.length && scores.people.length, anyNames = scores.groups.length + scores.people.length;
-    var H = 'margin:0;font-size:1rem';
-    var groupsHtml = [["", "Groups"], ["p", "Students"]].map(function (kd) {
-      var list = listOf(kd[0]); if (!list.length) return "";
-      return (both ? '<p style="margin:10px 0 2px;font-size:.85rem">' + kd[1] + "</p>" : "") + '<div class="pick" style="margin:8px 0 0">' + list.map(function (g) {
-        if (editNames) { var dk = kd[0] + "|" + g; return '<button class="small" style="color:#b3261e;border-color:#b3261e" data-del="' + esc(dk) + '">' + (sureDel === dk ? "Tap again to delete " + esc(g) : esc(g) + " &#10005;") + "</button>"; }
-        return '<button class="opt" data-group="' + esc(g) + '" data-kind="' + kd[0] + '" aria-pressed="' + (g === chosen && kd[0] === chosenKind) + '">' + esc(g) + (bestScore(g, kd[0]) !== null ? starBadge(bestScore(g, kd[0])) : "") + "</button>";
-      }).join("") + "</div>";
-    }).join("");
+    if (cur.mode) gameMode = cur.mode;
+    var LB = 'display:block;margin:0 0 8px;font-weight:700;font-size:1.05rem;color:#1f2a44';
+    var BOX = 'width:100%;box-sizing:border-box;font:inherit;font-size:1.05rem;color:#1f2a44;background:#fff;border:3px solid #1f2a44;border-radius:18px;padding:12px 14px';
+    var NOTE = 'margin:8px 0 0;font-size:.92rem;color:#5b6483';
+    function sel(id, label, list, v) {
+      return '<div><label for="' + id + '" style="' + LB + '">' + label + '</label><select id="' + id + '" style="' + BOX + ';appearance:auto">' + list.map(function (o) { return '<option value="' + o[0] + '"' + (String(o[0]) === String(v) ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select></div>";
+    }
+    var groupsRow = scores.groups.length ? '<p style="margin:12px 0 2px;font-size:.85rem">Or a saved group</p><div class="pick" style="margin:4px 0 0">' + scores.groups.map(function (g) {
+      return '<button class="opt" data-group="' + esc(g) + '" data-kind="" aria-pressed="' + (g === chosen && chosenKind === "") + '">' + esc(g) + "</button>";
+    }).join("") + "</div>" : "";
     gameSheet.innerHTML =
-      '<div class="sheet-top"><h2>Play 10 flips</h2><button class="small" data-act="close">Cancel</button></div>' +
+      '<div class="sheet-top"><h2>Play flips</h2><button class="small" data-act="close">Cancel</button></div>' +
       '<p style="margin:0 0 14px">After each word, tap Read it or Not yet.</p>' +
-      '<h3 style="' + H + '">Game</h3>' +
-      '<div class="pick col" style="margin:6px 0 0"><button class="opt" data-mode="open" aria-pressed="' + (gameMode === "open") + '">All cards showing</button>' +
-      '<button class="opt" data-mode="hide" aria-pressed="' + (gameMode === "hide") + '">Last card hidden</button>' +
-      '<button class="opt" data-mode="chain" aria-pressed="' + (gameMode === "chain") + '">Word chain</button></div>' +
-      (gameMode === "hide" ? '<p style="margin:0;font-size:.85rem">The last card starts face down. Tap anywhere to flip it.</p>' : "") +
-      (gameMode === "chain" ? '<p style="margin:0;font-size:.85rem">All three cards show. Each new word changes one card.</p>' : "") +
-      '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:18px"><h3 style="' + H + '">Who is reading?</h3>' +
-      (anyNames ? '<button class="link" style="color:#2f4f9e;padding:0;font-size:.85rem" data-act="editnames">' + (editNames ? "Done" : "Remove names") + "</button>" : "") + "</div>" +
-      (anyNames ? groupsHtml : '<p style="margin:8px 0 0">Add a student to begin.</p>') +
-      lettersBlock() +
-      '<div class="addrow" style="margin:18px 0 4px"><input id="newGroup" type="text" maxlength="30" placeholder="Add a student name" autocomplete="off" aria-label="Student name">' +
-      '<button class="small" data-act="addp">Add</button></div>' +
-      '<div class="foot" style="margin-top:14px"><button class="btn primary" style="min-width:220px" data-act="start"' + (chosen ? "" : " disabled") + ">" + (chosen ? "Start" : "Choose a name to start") + "</button></div>";
-    if (keepName) document.getElementById("newGroup").value = keepName;
+      '<label for="newNames" style="' + LB + '">Student names (one per line, up to 12)</label>' +
+      '<textarea id="newNames" rows="6" placeholder="Ava&#10;Marcus&#10;Jo" aria-label="Student names, one per line" style="' + BOX + ';font-size:1.15rem;padding:14px 16px"></textarea>' +
+      '<p style="' + NOTE + '">One name is one reader. With 2 or more names the students take turns. Each score is saved on this device.</p>' +
+      groupsRow +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px">' +
+        sel("turnsSel", "Turns per student", [[3, "3"], [4, "4"], [5, "5"], [6, "6"], [8, "8"], [10, "10"]], cur.turns) +
+        sel("orderSel", "Turn order", [["rotate", "Rotate: one card each"], ["block", "One student at a time"]], cur.order) +
+      "</div>" +
+      '<div style="margin-top:16px">' + sel("modeSel", "Game", [["open", "All cards showing"], ["hide", "Last card hidden"], ["chain", "Word chain"]], gameMode) + "</div>" +
+      (gameMode === "hide" ? '<p style="' + NOTE + '">The last card starts face down. Tap anywhere to flip it.</p>' : "") +
+      (gameMode === "chain" ? '<p style="' + NOTE + '">All three cards show. Each new word changes one card.</p>' : "") +
+      '<p id="startErr" role="alert" hidden style="margin:12px 0 0;color:#b3261e;font-weight:700"></p>' +
+      '<div style="margin-top:22px"><button data-act="start" style="font:inherit;font-weight:800;font-size:1.5rem;color:#fff;background:#e0506a;border:3px solid #1f2a44;border-radius:22px;padding:14px 56px;box-shadow:0 7px 0 #1f2a44;cursor:pointer">Start</button></div>';
+    document.getElementById("newNames").value = val;
+    document.getElementById("modeSel").onchange = function () { gameMode = this.value; startView(); };
   }
   function addGroup(kind) {
     var inp = document.getElementById("newGroup"); if (!inp) return;
@@ -820,6 +827,7 @@
       h += '<span class="dot' + (r === true ? " yes" : r === false ? " no" : i === game.results.length ? " now" : "") + '"></span>';
     }
     document.getElementById("dots").innerHTML = h;
+    document.getElementById("hudScores").textContent = game.players ? game.players.map(function (p) { return p.name + " " + p.results.filter(Boolean).length; }).join("  ·  ") : "";
   }
   function setGameUi(on) {
     document.getElementById("hud").hidden = !on;
@@ -831,10 +839,34 @@
     if (faceDown[2]) { faceDown[2] = false; paint(2); }
   }
   function startGame() {
-    if (!chosen) return;
+    var ta = document.getElementById("newNames");
+    if (ta) {
+      var tsel = document.getElementById("turnsSel"), osel = document.getElementById("orderSel"), msel = document.getElementById("modeSel");
+      FLIPS = parseInt(tsel.value, 10) || 10; turnOrder = osel.value; gameMode = msel.value;
+      try { localStorage.setItem("cvcOpts", JSON.stringify({ turns: FLIPS, order: turnOrder })); } catch (e) {}   // starting from the names box (not Play again): 1 name is one reader, 2 or more take turns
+      var names = [];
+      ta.value.split(/\r?\n|,/).forEach(function (n) { n = n.trim().slice(0, 30); if (n && names.indexOf(n) < 0) names.push(n); });
+      var err = document.getElementById("startErr");
+      if (names.length > 12) { err.textContent = "Please use 12 names or fewer."; err.hidden = false; return; }
+      if (!names.length && !(chosen && chosenKind === "")) { err.textContent = "Enter at least one student name."; err.hidden = false; return; }
+      if (names.length) {
+        try { localStorage.setItem("cvcNames", names.join("\n")); } catch (e) {}
+        names.forEach(function (n) { if (scores.people.indexOf(n) < 0) scores.people.push(n); });
+        saveScores();
+        taken = names; turnsOn = names.length >= 2;
+        if (!turnsOn) { chosen = names[0]; chosenKind = "p"; }
+      } else { turnsOn = false; }   // a saved group was picked
+    }
+    if (turnsOn ? taken.length < 2 : !chosen) return;
     if (!gameMode) gameMode = "open";
-    scores.last = chosen; scores.lastKind = chosenKind; scores.mode = gameMode; saveScores();
-    game = { group: chosen, kind: chosenKind, results: [], used: [], hide: gameMode === "hide", chain: gameMode === "chain", lastPos: -1, pools: customFor(chosenKind + "|" + chosen) || state.pools };
+    if (turnsOn) {
+      scores.mode = gameMode; saveScores();
+      var pl = taken.map(function (n) { return { name: n, results: [], pools: customFor("p|" + n) || state.pools }; });
+      game = { group: pl[0].name, kind: "p", players: pl, turn: 0, results: pl[0].results, used: [], hide: gameMode === "hide", chain: gameMode === "chain", lastPos: -1, pools: pl[0].pools };
+    } else {
+      scores.last = chosen; scores.lastKind = chosenKind; scores.mode = gameMode; saveScores();
+      game = { group: chosen, kind: chosenKind, results: [], used: [], hide: gameMode === "hide", chain: gameMode === "chain", lastPos: -1, pools: customFor(chosenKind + "|" + chosen) || state.pools };
+    }
     faceDown[2] = game.hide;
     closeSheet(); setGameUi(true); drawHud(); newWord(true);
   }
@@ -869,11 +901,40 @@
     var btns = [document.getElementById("markYes"), document.getElementById("markNo")];
     btns.forEach(function (b) { b.disabled = true; });
     setTimeout(function () { btns.forEach(function (b) { b.disabled = false; }); }, 450);
+    if (game.players) {
+      if (game.players.every(function (p) { return p.results.length >= FLIPS; })) { finishTurns(); return; }
+      if (turnOrder === "block") { if (game.players[game.turn].results.length >= FLIPS) game.turn = (game.turn + 1) % game.players.length; }
+      else game.turn = (game.turn + 1) % game.players.length;   // the next student reads the next word
+      var np = game.players[game.turn]; game.group = np.name; game.results = np.results; game.pools = np.pools; drawHud();
+      nextFlip(); return;
+    }
     if (game.results.length >= FLIPS) finishGame(); else nextFlip();
+  }
+  function finishTurns() {
+    var ps = game.players, md = game.hide ? "hide" : game.chain ? "chain" : "", now = Date.now();
+    var res = ps.map(function (p, i) {
+      var sc = p.results.filter(Boolean).length, rec = { g: p.name, d: today(), s: sc, t: now + i, k: "p" };
+      if (FLIPS !== 10) rec.n = FLIPS;
+      if (md) rec.m = md;
+      scores.games.push(rec); return { name: p.name, s: sc };
+    });
+    saveScores();
+    endGame();
+    openSheet(function () {
+      gameSheet.innerHTML =
+        '<h2 class="center">Scores</h2>' +
+        res.map(function (r) {
+          var td = scores.games.filter(function (x) { return sameReader(x, r.name, "p") && x.d === today(); });
+          return '<p class="center" style="margin:10px 0 0"><b>' + esc(r.name) + "</b>: " + r.s + " out of " + FLIPS + (td.length > 1 ? " (today: " + td.map(function (x) { return x.s; }).join(", ") + ")" : "") + "</p>";
+        }).join("") +
+        whereSaved() +
+        '<div class="foot"><button class="btn primary" data-act="again">Play again</button><button class="btn" data-act="scores">See scores</button><button class="btn" data-act="close">Done</button></div>';
+    });
   }
   function finishGame() {
     var score = game.results.filter(Boolean).length, group = game.group, kind = game.kind;
     var rec = { g: group, d: today(), s: score, t: Date.now() };
+    if (FLIPS !== 10) rec.n = FLIPS;
     if (game.hide) rec.m = "hide"; else if (game.chain) rec.m = "chain";
     if (kind === "p") rec.k = "p";
     scores.games.push(rec);
@@ -898,6 +959,7 @@
     delete scores.sounds[kd + "|" + nm]; if (soundKey === kd + "|" + nm) soundKey = "";
     if (scores.last === nm && (scores.lastKind || "") === kd) { scores.last = ""; scores.lastKind = ""; }
     if (chosen === nm && chosenKind === kd) { chosen = ""; chosenKind = ""; }
+    if (kd === "p") taken = taken.filter(function (x) { return x !== nm; });
     saveScores();
   }
   var showGroup = "", showKind = "", sure = 0, sureName = "";
@@ -923,7 +985,7 @@
       (any && !days.length ? "<p>No games yet for " + esc(showGroup) + ".</p>" : "") +
       days.map(function (d) {
         return '<div class="day"><h4>' + esc(niceDate(d)) + "</h4>" + byDay[d].slice().reverse().map(function (x) {
-          return '<div class="game"><span><b>' + x.s + "</b> out of " + FLIPS + (x.m === "hide" ? " · last card hidden" : x.m === "chain" ? " · word chain" : "") + '</span><button class="small" data-remove="' + x.t + '">' + (sure === x.t ? "Tap again to remove" : "Remove") + "</button></div>";
+          return '<div class="game"><span><b>' + x.s + "</b> out of " + (x.n || 10) + (x.m === "hide" ? " · last card hidden" : x.m === "chain" ? " · word chain" : "") + '</span><button class="small" data-remove="' + x.t + '">' + (sure === x.t ? "Tap again to remove" : "Remove") + "</button></div>";
         }).join("") + "</div>";
       }).join("") +
       (any && showGroup ? '<div style="margin-top:16px;text-align:center"><button class="small" style="color:#b3261e;border-color:#b3261e" data-delname="1">' + (sureName === showKind + "|" + showGroup ? "Tap again to delete " + esc(showGroup) + " and all scores" : "Delete " + esc(showGroup) + (showKind === "p" ? " (student)" : " (group)")) + "</button></div>" : "") +
